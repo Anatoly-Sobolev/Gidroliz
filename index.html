@@ -332,6 +332,12 @@ footer p{margin:0;color:#b9cdf5;max-width:560px}
 .bar{display:grid;grid-template-columns:42px 1fr 64px;align-items:center;gap:8px;font-size:14px;color:var(--ink)}
 .bar .v{font-weight:700;font-size:13.5px;text-align:right;font-variant-numeric:tabular-nums}
 .lab-stat{margin:0 0 14px;font-size:14.5px;color:var(--muted);text-align:center}
+.rates{display:grid;gap:6px;margin:14px 0;padding:12px 14px;border-radius:14px;background:#eef2ff}
+.rates div{display:flex;justify-content:space-between;gap:10px;font-size:14px;color:var(--ink)}
+.rates b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.satbar{display:block;height:8px;border-radius:999px;background:#d7def0;overflow:hidden;margin:-2px 0 4px}
+.satbar i{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--teal),var(--violet),var(--pink));transition:width .5s}
+.rates .eqm{margin:2px 0 0;font-size:13.5px;font-weight:700;color:var(--violet-d)!important;min-height:1.4em}
 #labHeat{transition:opacity .5s}
 .bar .t{height:12px;border-radius:999px;background:#e3e9f6;overflow:hidden}
 .bar .t i{display:block;height:100%;width:12%;border-radius:inherit;transition:width .5s ease}
@@ -478,7 +484,7 @@ input[type=range]{width:100%;accent-color:var(--violet);cursor:pointer}
 
     <div class="card lab rv" id="lab">
       <h3>Лаборатория: растворяем соль</h3>
-      <p>Выбери соль и <b>перетащи кристалл в стакан</b> (или просто нажми на него). Смотри, как кристалл распадается на ионы, а «слабые» ионы реагируют с водой. Нагревай раствор ползунком и нажимай на ионы — к ним подплывёт вода.</p>
+      <p>Выбери соль и <b>перетащи кристалл в стакан</b>. Он опустится на дно и будет растворяться постепенно: ионы отрываются с поверхности по одному. Нагревай раствор ползунком — растворение и гидролиз ускорятся. Нажимай на ионы — к ним подплывёт вода.</p>
       <div class="chips" id="labSalts" role="group" aria-label="Соль для опыта"></div>
       <div class="lab-grid">
         <div class="stage lab-stage" id="labStage" data-m="neutral">
@@ -507,8 +513,16 @@ input[type=range]{width:100%;accent-color:var(--violet);cursor:pointer}
           <p class="lab-stat" id="labStat" aria-live="polite"></p>
           <label class="rng" for="labT">Температура раствора: <b id="labTv">25 °C</b></label>
           <input type="range" id="labT" min="20" max="90" step="5" value="25">
-          <p class="mini">Гидролиз обратим: ионы то реагируют с водой, то возвращаются обратно. Реакция с водой поглощает тепло, поэтому при нагревании гидролиз усиливается.</p>
-          <div class="lab-btns"><button class="btn line" id="labAdd" type="button">+ Порция соли</button><button class="btn line" id="labClear" type="button">Вылить раствор</button></div>
+          <div class="rates" aria-live="off">
+            <div><span>Насыщение раствора</span><b id="rSat">0%</b></div>
+            <span class="satbar" aria-hidden="true"><i id="rSatBar"></i></span>
+            <div><span>Растворение кристалла</span><b id="rDis">—</b></div>
+            <div><span>Гидролиз →</span><b id="rFwd">—</b></div>
+            <div><span>Обратная реакция ←</span><b id="rRev">—</b></div>
+            <p class="eqm" id="rEq"></p>
+          </div>
+          <p class="mini"><b>От чего зависят скорости.</b> Растворение ускоряется при нагревании; на растворение этих солей pH практически не влияет. Гидролиз поглощает тепло, поэтому при нагревании он усиливается. А pH влияет на обратную реакцию: чем больше накопилось H₃O⁺ или OH⁻, тем чаще они встречаются с продуктами гидролиза и превращаются обратно — гидролиз сам себя тормозит (принцип Ле Шателье). Когда прямая и обратная скорости равны — наступает равновесие.</p>
+          <div class="lab-btns"><button class="btn line" id="labClear" type="button">Вылить раствор</button></div>
         </div>
       </div>
     </div>
@@ -809,11 +823,12 @@ function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 })();
 
 /* ---------- ion stage engine ---------- */
-function Stage(layer,b){this.layer=layer;this.b=b;this.ps=[];this.speed=1;this.visible=false;this.gatherUntil=0;this.gc=null;this.onTick=null;}
+function ionFs(label,r){return Math.round(Math.min(r*.78,3*r/label.length));}
+function Stage(layer,b){this.layer=layer;this.b=b;this.ps=[];this.speed=1;this.sc=1;this.visible=false;this.gatherUntil=0;this.gc=null;this.onTick=null;}
 Stage.prototype.add=function(label,cls,r,x,y,fs){
   var g=document.createElementNS(NS,'g');g.setAttribute('class','ion p-'+cls);
   var c=document.createElementNS(NS,'circle');c.setAttribute('r',r);
-  var t=document.createElementNS(NS,'text');t.textContent=label;t.setAttribute('font-size',fs||Math.round(r*.78));
+  var t=document.createElementNS(NS,'text');t.textContent=label;t.setAttribute('font-size',fs||ionFs(label,r));
   g.appendChild(c);g.appendChild(t);this.layer.appendChild(g);
   var a=rnd(0,6.28),v=rnd(12,30);
   var p={g:g,c:c,t:t,x:x!=null?x:rnd(this.b.x0,this.b.x1),y:y!=null?y:rnd(this.b.y0,this.b.y1),vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:r,cls:cls,label:label,mode:'free',fade:0,ox:0,oy:0};
@@ -832,26 +847,25 @@ Stage.prototype.sendWater=function(t){
   }
   return best;
 };
-Stage.prototype.draw=function(p){p.g.setAttribute('transform','translate('+p.x.toFixed(1)+' '+p.y.toFixed(1)+')');if(p.fade)p.g.style.opacity=clamp(1-p.fade,0,1);};
+Stage.prototype.draw=function(p){p.g.setAttribute('transform','translate('+p.x.toFixed(1)+' '+p.y.toFixed(1)+')'+(this.sc!==1?' scale('+this.sc.toFixed(3)+')':''));if(p.fade)p.g.style.opacity=clamp(1-p.fade,0,1);};
 Stage.prototype.clear=function(){while(this.layer.firstChild)this.layer.removeChild(this.layer.firstChild);this.ps=[];};
 Stage.prototype.remove=function(p){var i=this.ps.indexOf(p);if(i>-1)this.ps.splice(i,1);if(p.g.parentNode)p.g.parentNode.removeChild(p.g);};
 Stage.prototype.gather=function(cx,cy,ms){this.gc={x:cx,y:cy};this.gatherUntil=performance.now()+ms;};
 Stage.prototype.step=function(dt,now){
-  var b=this.b,ps=this.ps,i,j,p,q,gat=now<this.gatherUntil,sv=this.speed;
+  var b=this.b,ps=this.ps,i,j,p,q,gat=now<this.gatherUntil,sv=this.speed,sc=this.sc;
   if(this.gc&&!gat){this.gc=null;ps.forEach(function(p){var a=rnd(0,6.28),v=rnd(80,130);p.vx=Math.cos(a)*v;p.vy=Math.sin(a)*v;});}
   for(i=ps.length-1;i>=0;i--){
     p=ps[i];
     if(p.fade){p.fade+=dt*1.3;if(p.fade>=1){this.remove(p);continue;}}
     if(p.mode==='approach'&&p.target){
       var dx=p.target.x-p.x,dy=p.target.y-p.y,d=Math.hypot(dx,dy)||1;
-      if(d<p.r+p.target.r+1){if(this.onContact)this.onContact(p,p.target);p.mode='free';p.target=null;var a=rnd(0,6.28);p.vx=Math.cos(a)*40;p.vy=Math.sin(a)*40;}
+      if(d<(p.r+p.target.r)*sc+1){if(this.onContact)this.onContact(p,p.target);p.mode='free';p.target=null;var a=rnd(0,6.28);p.vx=Math.cos(a)*40;p.vy=Math.sin(a)*40;}
       else{p.vx=dx/d*85*Math.max(1,sv);p.vy=dy/d*85*Math.max(1,sv);p.target.vx*=.9;p.target.vy*=.9;}
     }else if(p.mode==='lattice'){
       p.vx=0;p.vy=70;
-      if(p.y>=p.stopY){
-        p.mode='free';var bx=p.x-p.lc.x,by=p.y-p.lc.y,bl=Math.hypot(bx,by)||1;
-        p.vx=bx/bl*70+rnd(-25,25);p.vy=by/bl*70+rnd(-25,25);
-      }
+      if(p.y>=p.stopY){p.y=p.stopY;p.vy=0;p.mode='solid';}
+    }else if(p.mode==='solid'){
+      p.vx=0;p.vy=0;
     }else if(gat){
       var gx=this.gc.x-p.x,gy=this.gc.y-p.y,gd=Math.hypot(gx,gy)||1;
       p.vx=gx/gd*Math.min(130,gd*2.2);p.vy=gy/gd*Math.min(130,gd*2.2);
@@ -862,16 +876,24 @@ Stage.prototype.step=function(dt,now){
       else if(sp<vmin){p.vx*=1.05;p.vy*=1.05;if(sp<1){p.vx=rnd(-12,12)*sv;p.vy=rnd(-12,12)*sv;}}
     }
     p.x+=p.vx*dt;p.y+=p.vy*dt;
-    if(p.x<b.x0+p.r){p.x=b.x0+p.r;p.vx=Math.abs(p.vx);}
-    if(p.x>b.x1-p.r){p.x=b.x1-p.r;p.vx=-Math.abs(p.vx);}
-    if(p.y<b.y0+p.r){p.y=b.y0+p.r;p.vy=Math.abs(p.vy);}
-    if(p.y>b.y1-p.r){p.y=b.y1-p.r;p.vy=-Math.abs(p.vy);}
+    var R=p.r*sc;
+    if(p.x<b.x0+R){p.x=b.x0+R;p.vx=Math.abs(p.vx);}
+    if(p.x>b.x1-R){p.x=b.x1-R;p.vx=-Math.abs(p.vx);}
+    if(p.y<b.y0+R){p.y=b.y0+R;p.vy=Math.abs(p.vy);}
+    if(p.y>b.y1-R){p.y=b.y1-R;p.vy=-Math.abs(p.vy);}
   }
   if(!gat){
     for(i=0;i<ps.length;i++)for(j=i+1;j<ps.length;j++){
-      p=ps[i];q=ps[j];if(p.mode!=='free'||q.mode!=='free')continue;
-      var ex=q.x-p.x,ey=q.y-p.y,ed=Math.hypot(ex,ey),m=p.r+q.r+2;
-      if(ed<m&&ed>0){var push=(m-ed)*.5,nx=ex/ed,ny=ey/ed;p.x-=nx*push;p.y-=ny*push;q.x+=nx*push;q.y+=ny*push;}
+      p=ps[i];q=ps[j];
+      /* свободные частицы расталкиваются; кристалл на дне стоит, его только обтекают */
+      var pf=p.mode==='free',qf=q.mode==='free';
+      if(!pf&&!qf)continue;
+      if((!pf&&p.mode!=='solid')||(!qf&&q.mode!=='solid'))continue;
+      var ex=q.x-p.x,ey=q.y-p.y,ed=Math.hypot(ex,ey),m=(p.r+q.r)*sc+2;
+      if(ed<m&&ed>0){
+        var nx=ex/ed,ny=ey/ed,pp=pf&&qf?.5:pf?1:0,qq=pf&&qf?.5:qf?1:0,push=m-ed;
+        p.x-=nx*push*pp;p.y-=ny*push*pp;q.x+=nx*push*qq;q.y+=ny*push*qq;
+      }
     }
   }
   for(i=0;i<ps.length;i++)this.draw(ps[i]);
@@ -1014,7 +1036,7 @@ reduceMQ.addEventListener&&reduceMQ.addEventListener('change',function(){if(!red
     products.push(p);if(products.length>5){var o=products.shift();o.fade=.01;}
     if(!t.flip){
       t.flip=true;var oc=t.cls,ol=t.label;t.t.textContent=e.alt[0];t.g.setAttribute('class','ion p-'+e.alt[1]);t.t.setAttribute('font-size',e.alt[0].length>4?8:11);
-      setTimeout(function(){t.t.textContent=ol;t.g.setAttribute('class','ion p-'+oc);t.t.setAttribute('font-size',Math.round(t.r*.78));t.flip=false;},1500);
+      setTimeout(function(){t.t.textContent=ol;t.g.setAttribute('class','ion p-'+oc);t.t.setAttribute('font-size',ionFs(ol,t.r));t.flip=false;},1500);
     }
     updCnt();
   };
@@ -1108,15 +1130,30 @@ function chipBtns(host,items,onPick){
       bH=document.getElementById('labBH'),bOH=document.getElementById('labBOH'),tIn=document.getElementById('labT'),tV=document.getElementById('labTv');
   var st=new Stage(layer,{x0:76,x1:384,y0:112,y1:262}),meter=new Meter(document.getElementById('labMeter'));
   var LAB=[
-    {name:'NaCl',cat:['Na⁺',14],an:['Cl⁻',14],nc:1,na:1,units:4,hyd:null},
-    {name:'NH₄Cl',cat:['NH₄⁺',18],an:['Cl⁻',14],nc:1,na:1,units:4,hyd:'cat',alt:'NH₃',k:1},
-    {name:'CH₃COONa',cat:['Na⁺',14],an:['CH₃COO⁻',22],nc:1,na:1,units:4,hyd:'an',alt:'CH₃COOH',k:1},
-    {name:'Na₂CO₃',cat:['Na⁺',14],an:['CO₃²⁻',17],nc:2,na:1,units:3,hyd:'an',alt:'HCO₃⁻',k:2.2},
-    {name:'AlCl₃',cat:['Al³⁺',17],an:['Cl⁻',14],nc:1,na:3,units:3,hyd:'cat',alt:'AlOH²⁺',k:2.6}
+    {name:'NaCl',cat:['Na⁺',14],an:['Cl⁻',14],nc:1,na:1,units:4,hyd:null,sat:30,satT:.1},
+    {name:'NH₄Cl',cat:['NH₄⁺',18],an:['Cl⁻',14],nc:1,na:1,units:4,hyd:'cat',alt:'NH₃',k:1,sat:26,satT:.8},
+    {name:'CH₃COONa',cat:['Na⁺',14],an:['CH₃COO⁻',22],nc:1,na:1,units:4,hyd:'an',alt:'CH₃COOH',k:1,sat:30,satT:.6},
+    {name:'Na₂CO₃',cat:['Na⁺',14],an:['CO₃²⁻',17],nc:2,na:1,units:3,hyd:'an',alt:'HCO₃⁻',k:2.2,sat:21,satT:.9},
+    {name:'AlCl₃',cat:['Al³⁺',17],an:['Cl⁻',14],nc:1,na:3,units:3,hyd:'cat',alt:'AlOH²⁺',k:2.6,sat:28,satT:.1}
   ];
-  var cur=1,T=25,evt=0,pairs=[];
+  var cur=1,T=25,evt=0,disAcc=0,uiAcc=0,pairs=[],wasSolid=false,satShown=false;
   function ringAt(x,y){pulse.setAttribute('cx',x);pulse.setAttribute('cy',y);pulse.classList.remove('go');void pulse.getBoundingClientRect();pulse.classList.add('go');}
-  function tf(){return 1+(T-25)/30;}
+  /* скорости (в «ионах в секунду»):
+     растворение — только от температуры: kDis = 0,3·2^((T−20)/15);
+     гидролиз → : kF·[свободные гидролизующиеся ионы], kF = 0,06·k·2^((T−25)/20);
+     обратная ← : kR·[продукты]·[H₃O⁺ или OH⁻] ∝ kR·n², kR = 0,06·2^((T−25)/40) — чем дальше pH от 7, тем она быстрее */
+  function kDis(){return .3*Math.pow(2,(T-20)/15);}
+  /* растворимость (в «ионах на стакан») растёт с температурой по-разному у разных солей */
+  function satIons(){var s=LAB[cur];return s.sat*(1+s.satT*(T-20)/70);}
+  function dissolved(){return st.ps.filter(function(p){return p.ion&&p.mode!=='solid'&&p.mode!=='lattice';}).length;}
+  /* растворение: быстрее при нагреве, быстрее у большого кристалла (больше поверхность),
+     медленнее по мере насыщения раствора и останавливается у насыщенного */
+  function disRate(){var S=st.ps.filter(function(p){return p.ion&&p.mode==='solid';}).length;if(!S)return 0;
+    return kDis()*Math.pow(S/8,2/3)*Math.max(0,1-dissolved()/satIons());}
+  function kF(){return .06*(LAB[cur].k||0)*Math.pow(2,(T-25)/20);}
+  function kR(){return .06*Math.pow(2,(T-25)/40);}
+  function solids(){return st.ps.filter(function(p){return p.ion&&(p.mode==='solid'||p.mode==='lattice');});}
+  function r2(v){return (Math.round(v*100)/100).toString().replace('.',',');}
   function hydIon(s){return s.hyd==='cat'?s.cat[0]:s.an[0];}
   function cands(){var s=LAB[cur];return st.ps.filter(function(p){return p.ion&&s.hyd&&p.cls===s.hyd&&p.mode==='free'&&!p.alt&&!p.busy;});}
   var SUP={'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','-':'⁻'},
@@ -1132,10 +1169,26 @@ function chipBtns(host,items,onPick){
     meter.set(ph);var m=medOf(ph);med.textContent=MED_TXT[m];med.className='chip '+m;box.setAttribute('data-m',m);
     bH.style.width=((Math.log10(h)+14)/14*100).toFixed(1)+'%';bOH.style.width=((Math.log10(oh)+14)/14*100).toFixed(1)+'%';
     vH.textContent=sci(h);vOH.textContent=sci(oh);
-    var ions=st.ps.filter(function(p){return p.ion;}),hyd=ions.filter(function(p){return s.hyd&&p.cls===s.hyd;}).length;
+    var ions=st.ps.filter(function(p){return p.ion;}),sol=solids().length,
+        hyd=ions.filter(function(p){return s.hyd&&p.cls===s.hyd&&p.mode!=='solid'&&p.mode!=='lattice';}).length,
+        pre='Растворено ионов: '+dissolved()+(sol?' · на дне: '+sol:'')+' · ';
     if(!ions.length)stat.textContent='В стакане только вода · pH = 7, pOH = 7';
-    else if(!s.hyd)stat.textContent='Ионы не реагируют с водой · pH ≈ 7, pOH ≈ 7';
-    else stat.textContent='Прореагировало '+n+' из '+hyd+' ионов '+hydIon(s)+' · pH ≈ '+fmt(ph)+', pOH ≈ '+fmt(14-ph);
+    else if(!s.hyd)stat.textContent=pre+'Ионы не реагируют с водой · pH ≈ 7, pOH ≈ 7';
+    else stat.textContent=pre+'Прореагировало '+n+' из '+hyd+' растворённых ионов '+hydIon(s)+' · pH ≈ '+fmt(ph)+', pOH ≈ '+fmt(14-ph);
+    rates();
+  }
+  var rSat=document.getElementById('rSat'),rSatBar=document.getElementById('rSatBar'),rDis=document.getElementById('rDis'),rFwd=document.getElementById('rFwd'),rRev=document.getElementById('rRev'),rEq=document.getElementById('rEq');
+  function rates(){
+    var s=LAB[cur],n=pairs.length,sol=solids().length,f=s.hyd?kF()*cands().length:0,b=s.hyd?kR()*n*n:0;
+    var sat=Math.round(dissolved()/satIons()*100),dr=disRate();
+    rSat.textContent=sat+'%'+(sat>=100?' — насыщен':'');rSatBar.style.width=Math.min(100,sat)+'%';
+    rDis.textContent=sol?(dr>0?r2(dr)+' ион/с':'стоп: раствор насыщен'):(st.ps.some(function(p){return p.ion;})?'кристалл растворился':'—');
+    rFwd.textContent=s.hyd?r2(f)+' /с':'не идёт';
+    rRev.textContent=s.hyd?r2(b)+' /с':'не идёт';
+    if(!s.hyd)rEq.textContent=st.ps.some(function(p){return p.ion;})?'Ионы сильных «родителей» с водой не реагируют.':'';
+    else if(!n&&!f)rEq.textContent='';
+    else if(Math.abs(f-b)<=.25*Math.max(f,b,.05))rEq.textContent='⇄ Скорости почти равны — равновесие.';
+    else rEq.textContent=f>b?'→ Прямая быстрее: гидролиз набирает силу.':'← Обратная быстрее: продукты возвращаются в ионы.';
   }
   function setTemp(){
     st.speed=.5+(T-20)/70*1.7;heat.setAttribute('opacity',((T-20)/70*.22).toFixed(3));tV.textContent=T+' °C';
@@ -1143,36 +1196,47 @@ function chipBtns(host,items,onPick){
   function setIon(p,label,cls,fs){p.t.textContent=label;p.g.setAttribute('class','ion p-'+cls);p.t.setAttribute('font-size',fs);}
   function revert(pr){
     var i=pairs.indexOf(pr);if(i<0)return;pairs.splice(i,1);
-    pr.ion.alt=false;setIon(pr.ion,pr.ion.label,pr.ion.cls,Math.round(pr.ion.r*.78));
+    pr.ion.alt=false;setIon(pr.ion,pr.ion.label,pr.ion.cls,ionFs(pr.ion.label,pr.ion.r));
     pr.w.cls='w';setIon(pr.w,'H₂O','w',9);
     ringAt(pr.ion.x,pr.ion.y);update();
   }
-  function reset(withSalt){
-    st.clear();pairs=[];evt=0;
+  function reset(){
+    st.clear();pairs=[];evt=0;disAcc=0;wasSolid=false;satShown=false;st.sc=1;
     for(var i=0;i<12;i++)st.add('H₂O','w',12,rnd(95,365),rnd(135,250),9);
-    cap.textContent='Чистая вода: H⁺ и OH⁻ поровну, pH = 7. Брось кристалл '+LAB[cur].name+'!';update();
-    if(withSalt)drop(230);
+    cap.textContent='Чистая вода: H⁺ и OH⁻ поровну, pH = 7. Перетащи кристалл '+LAB[cur].name+' в стакан!';update();
   }
   function react(t){var w=st.sendWater(t);if(w&&!reduced())t.busy=true;return w;}
   function equilibrate(){
     var s=LAB[cur];if(!s.hyd)return;
-    var all=st.ps.filter(function(p){return p.ion&&p.cls===s.hyd;}).length,target=Math.min(8,Math.round(all*.3*s.k*tf()));
+    /* равновесие: kF·(N−n) = kR·n² */
+    var all=st.ps.filter(function(p){return p.ion&&p.cls===s.hyd;}).length,K=kF()/kR(),target=Math.min(40,Math.round((-K+Math.sqrt(K*K+4*K*all))/2));
     while(pairs.length>target)revert(pairs[pairs.length-1]);
     var c=cands();while(pairs.length<target&&c.length){if(!react(c.pop()))break;}
   }
   function drop(x){
-    var s=LAB[cur],n=st.ps.filter(function(p){return p.ion;}).length;
-    if(n>=30){cap.textContent='Стакан полон — вылей раствор или понаблюдай за равновесием.';return;}
+    var s=LAB[cur],pile=solids();
+    if(pile.length>=48){cap.textContent='На дне уже гора нерастворённой соли — раствор насыщен, новой соли некуда раствориться. Нагрей раствор или вылей его.';return;}
     x=clamp(x,140,320);
     var list=[],u,i;
     for(u=0;u<s.units;u++){for(i=0;i<s.nc;i++)list.push(['cat',s.cat]);for(i=0;i<s.na;i++)list.push(['an',s.an]);}
-    var cols=Math.min(4,list.length),rows=Math.ceil(list.length/cols),sp=36,y0=st.b.y0+22,cy=y0+(rows-1)*sp/2;
+    var sc=st.sc,cols=Math.min(4,list.length),rows=Math.ceil(list.length/cols),rm=Math.max(s.cat[1],s.an[1]),sp=2*rm*sc+1,
+        y0=st.b.y0+rm*sc+2,floor=st.b.y1-rm*sc-2;
+    /* новый кристалл ложится на дно или сверху на нерастворённые */
+    pile.forEach(function(p){
+      var py=p.mode==='lattice'?p.stopY:p.y;
+      if(Math.abs(p.x-x)<sp*cols/2+p.r*sc)floor=Math.min(floor,py-(p.r+rm)*sc-1);
+    });
+    var shift=Math.max(0,floor-(y0+(rows-1)*sp));
+    /* чуть перемешиваем, чтобы катионы и анионы чередовались */
+    list.sort(function(){return Math.random()-.5;});
     list.forEach(function(it,k){
       var c=k%cols,r=Math.floor(k/cols),px=x+(c-(cols-1)/2)*sp,py=y0+r*sp,p=st.add(it[1][0],it[0],it[1][1],px,py);p.ion=true;
       if(reduced()){p.x=rnd(st.b.x0+20,st.b.x1-20);p.y=rnd(st.b.y0+20,st.b.y1-20);st.draw(p);}
-      else{p.mode='lattice';p.stopY=py+40;p.lc={x:x,y:cy};}
+      else{p.mode='lattice';p.stopY=py+shift;}
     });
-    cap.textContent='Кристалл '+s.name+' распадается на ионы — это диссоциация. '+(s.hyd?'Следи за '+hydIon(s)+': он будет реагировать с водой.':'Ионы сильных «родителей» с водой не реагируют.');
+    wasSolid=true;
+    var full=dissolved()>=satIons();
+    cap.textContent=reduced()?'Кристалл '+s.name+' растворился и распался на ионы.':full?'Раствор уже насыщен — кристалл ляжет на дно и не растворится, пока не нагреешь раствор.':'Кристалл '+s.name+' опускается на дно. Сейчас он начнёт растворяться: ионы будут отрываться с поверхности по одному. Чем больше соли растворится, тем сильнее сдвинется pH.';
     if(reduced())equilibrate();
     update();kick();
   }
@@ -1184,14 +1248,35 @@ function chipBtns(host,items,onPick){
     t.alt=true;setIon(t,s.alt,'n',s.alt.length>4?8:10);
     if(s.hyd==='cat'){w.cls='h';setIon(w,'H₃O⁺','h',8);cap.textContent=hydIon(s)+' отдал H⁺ молекуле воды: получились '+s.alt+' и H₃O⁺. Среда становится кислой.';}
     else{w.cls='oh';setIon(w,'OH⁻','oh',9);cap.textContent=hydIon(s)+' забрал H⁺ у молекулы воды: получились '+s.alt+' и OH⁻. Среда становится щелочной.';}
-    pairs.push({ion:t,w:w,age:0,life:rnd(5,8)});update();
+    pairs.push({ion:t,w:w,age:0});update();
   };
   st.onTick=function(dt){
-    var s=LAB[cur];
-    for(var i=pairs.length-1;i>=0;i--){pairs[i].age+=dt;if(pairs[i].age>pairs[i].life)revert(pairs[i]);}
-    if(!s.hyd)return;
-    var c=cands();evt+=dt*.1*c.length*s.k*tf();
-    if(evt>=1){evt=0;if(c.length)react(c[Math.floor(Math.random()*c.length)]);}
+    var s=LAB[cur],i,changed=false;
+    /* чем теснее в стакане, тем мельче рисуем частицы */
+    var tgt=clamp(Math.sqrt(30/Math.max(30,st.ps.length)),.58,1);st.sc+=(tgt-st.sc)*Math.min(1,dt*2);
+    /* вода в избытке: если свободных молекул мало, добавляем новые */
+    if(st.ps.length<140&&st.ps.filter(function(p){return p.cls==='w'&&p.mode==='free';}).length<5)st.add('H₂O','w',12,rnd(95,365),st.b.y0+14,9);
+    /* растворение: ионы по одному отрываются с верхней поверхности кристалла */
+    var sol=st.ps.filter(function(p){return p.ion&&p.mode==='solid';});
+    if(sol.length){
+      var dr=disRate();disAcc+=dt*dr;
+      if(dr===0&&!satShown){satShown=true;cap.textContent='Раствор насыщен: больше соли в этой воде при '+T+' °C не растворится — остаток лежит на дне. Нагрей раствор, и растворимость вырастет.';}
+      else if(dr>0)satShown=false;
+      while(disAcc>=1&&sol.length){
+        disAcc-=1;sol.sort(function(a,b){return a.y-b.y;});
+        var top=sol.slice(0,Math.min(3,sol.length)),p=top[Math.floor(Math.random()*top.length)];
+        sol.splice(sol.indexOf(p),1);p.mode='free';p.vx=rnd(-25,25)*st.speed;p.vy=-rnd(20,40)*st.speed;changed=true;
+      }
+      if(!sol.length&&!solids().length){cap.textContent='Кристалл полностью растворился: все ионы в растворе.'+(s.hyd?' Теперь следи за '+hydIon(s)+'.':'');}
+    }else disAcc=0;
+    if(s.hyd){
+      /* обратная реакция: на каждую пару — kR·n (n — сколько накопилось H₃O⁺/OH⁻) */
+      var n=pairs.length,pr=kR()*n*dt;
+      for(i=pairs.length-1;i>=0;i--){pairs[i].age+=dt;if(pairs[i].age>1&&Math.random()<pr){revert(pairs[i]);changed=true;}}
+      var c=cands();evt+=dt*kF()*c.length;
+      if(evt>=1){evt-=1;if(c.length)react(c[Math.floor(Math.random()*c.length)]);}
+    }
+    uiAcc+=dt;if(changed||uiAcc>.3){uiAcc=0;update();}
   };
   st.clickable(function(p){
     var s=LAB[cur];
@@ -1203,7 +1288,7 @@ function chipBtns(host,items,onPick){
     }else cap.textContent='Это молекула воды. Нажми на ион — и вода подплывёт к нему.';
   });
   watch(st,svg);
-  var pick=chipBtns(document.getElementById('labSalts'),LAB.map(function(s){return {label:s.name};}),function(i){cur=i;reset(true);});
+  var pick=chipBtns(document.getElementById('labSalts'),LAB.map(function(s){return {label:s.name};}),function(i){cur=i;reset();});
   pick(cur);
   tIn.addEventListener('input',function(){
     T=+tIn.value;setTemp();
@@ -1212,10 +1297,10 @@ function chipBtns(host,items,onPick){
     if(!has)cap.textContent=hot?'Нагрели воду: молекулы движутся быстрее, но без соли среда остаётся нейтральной.':'Вода остывает: молекулы движутся медленнее.';
     else if(!LAB[cur].hyd)cap.textContent=hot?'Частицы движутся быстрее, но ионы сильных «родителей» с водой всё равно не реагируют — pH ≈ 7.':'Раствор остывает: частицы замедляются, pH по-прежнему ≈ 7.';
     else cap.textContent=hot?'Горячо! Частицы движутся быстрее, ионы чаще реагируют с водой — гидролиз усиливается, pH уходит дальше от 7.':'Раствор остывает: частицы замедляются, реакций становится меньше — pH возвращается ближе к 7.';
-    kick();
+    if(solids().length)cap.textContent+=hot?' Кристалл растворяется быстрее.':' Кристалл растворяется медленнее.';
+    update();kick();
   });
-  document.getElementById('labAdd').addEventListener('click',function(){drop(rnd(170,290));});
-  document.getElementById('labClear').addEventListener('click',function(){reset(false);});
+  document.getElementById('labClear').addEventListener('click',reset);
   var cr=document.getElementById('crystal'),drag=null;
   cr.addEventListener('pointerdown',function(e){drag={x:e.clientX,y:e.clientY,moved:false};try{cr.setPointerCapture(e.pointerId);}catch(x){}cr.classList.remove('back');cr.classList.add('drag');});
   cr.addEventListener('pointermove',function(e){
@@ -1232,8 +1317,13 @@ function chipBtns(host,items,onPick){
   }
   cr.addEventListener('pointerup',function(e){endDrag(e,false);});
   cr.addEventListener('pointercancel',function(e){endDrag(e,true);});
-  cr.addEventListener('click',function(){if(cr.dataset.skip)return;drop(230);});
-  setTemp();reset(true);
+  /* мышью и пальцем — только перетаскиванием; с клавиатуры (Enter/пробел) — бросок в центр стакана */
+  cr.addEventListener('click',function(e){
+    if(cr.dataset.skip)return;
+    if(e.detail===0)drop(230);
+    else cap.textContent='Возьми кристалл и перетащи его в стакан — просто нажатия мало.';
+  });
+  setTemp();reset();
 })();
 
 /* ---------- salt builder ---------- */
